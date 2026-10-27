@@ -1,0 +1,25 @@
+# CLion / JetBrains
+.idea/
+cmake-build-*/
+*.cbp
+*.clog
+
+# Build artifacts
+build/
+bin/
+lib/
+*.exe
+*.o
+*.obj
+*.dll
+*.so
+*.dylib
+*.a
+
+# GoogleTest FetchContent cache (if downloaded into build tree)
+_deps/
+
+# OS / Tooling metadata
+.DS_Store
+Thumbs.db
+*.log
