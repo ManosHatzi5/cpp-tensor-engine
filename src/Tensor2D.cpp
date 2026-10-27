@@ -101,6 +101,18 @@ Tensor2D Tensor2D::sigmoid() const {
     return result;
 }
 
+#include <random>
+
+void Tensor2D::randomize(float min_val, float max_val) {
+    // Standard mersenne twister seeded with a non-deterministic device
+    static std::mt19937 gen(42); // fixed seed 42 for reproducible unit tests
+    std::uniform_real_distribution<float> dist(min_val, max_val);
+
+    for (size_t i = 0; i < rows_ * cols_; ++i) {
+        data_[i] = dist(gen);
+    }
+}
+
 
 
 

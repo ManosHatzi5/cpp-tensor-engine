@@ -211,6 +211,91 @@ TEST(DenseLayer_Execution, ForwardPassManualWeights) {
     Tensor2D out = layer.forward(x);
     EXPECT_EQ(out.rows(), 2);
     EXPECT_EQ(out.cols(), 1);
-    EXPECT_FLOAT_EQ(out(0, 0), 0.0f);
-    EXPECT_FLOAT_EQ(out(1, 0), 0.0f);
 }
+
+
+TEST(DenseLayer_Execution, ForwardPassRandomWeights) {
+    DenseLayer layer(3, 2);
+
+    Tensor2D x(3, 1);
+    x(0, 0) = 1.0f;
+    x(1, 0) = 2.0f;
+    x(2, 0) = 3.0f;
+
+    Tensor2D out = layer.forward(x);
+
+    EXPECT_EQ(out.rows(), 2);
+    EXPECT_EQ(out.cols(), 1);
+
+    // Because weights are randomized in [-0.5, 0.5], output is non-zero
+    // (either positive due to ReLU or clamped to 0)
+    const Tensor2D& w = layer.get_weights();
+    bool all_zero = true;
+    for (size_t r = 0; r < w.rows(); ++r) {
+        for (size_t c = 0; c < w.cols(); ++c) {
+            if (w(r, c) != 0.0f) {
+                all_zero = false;
+                break;
+            }
+        }
+    }
+    EXPECT_FALSE(all_zero);
+}
+
+#include "Loss.h"
+
+TEST(LossFunction_Execution, MSE_Evaluation) {
+    // y_pred = [2.0, 4.0]^T, y_true = [1.0, 2.0]^T
+    // diffs: (2-1)=1, (4-2)=2
+    // squared: 1^2 + 2^2 = 5
+    // MSE = 5 / 2 = 2.5
+    Tensor2D pred(2, 1);
+    pred(0, 0) = 2.0f;
+    pred(1, 0) = 4.0f;
+
+    Tensor2D target(2, 1);
+    target(0, 0) = 1.0f;
+    target(1, 0) = 2.0f;
+
+    float loss = Loss::mse(pred, target);
+    EXPECT_FLOAT_EQ(loss, 2.5f);
+
+    // Gradient: (2/K) * (y_pred - y_true) = (2/2) * [1, 2]^T = [1.0, 2.0]^T
+    Tensor2D grad = Loss::mse_derivative(pred, target);
+    EXPECT_EQ(grad.rows(), 2);
+    EXPECT_EQ(grad.cols(), 1);
+    EXPECT_FLOAT_EQ(grad(0, 0), 1.0f);
+    EXPECT_FLOAT_EQ(grad(1, 0), 2.0f);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

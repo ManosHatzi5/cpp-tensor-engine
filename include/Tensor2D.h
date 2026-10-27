@@ -12,6 +12,10 @@ public:
     // Constructor
     Tensor2D(size_t rows, size_t cols);
 
+    // Getters
+    [[nodiscard]] size_t rows() const { return rows_; }
+    [[nodiscard]] size_t cols() const { return cols_; }
+
     // Operator Overloads for 2D indexing (r = row, c = col)
     float& operator()(size_t r, size_t c);
     const float& operator()(size_t r, size_t c) const;
@@ -36,7 +40,7 @@ public:
     [[nodiscard]] Tensor2D relu() const;
     [[nodiscard]] Tensor2D sigmoid() const;
 
-    // Getters
-    [[nodiscard]] size_t rows() const { return rows_; }
-    [[nodiscard]] size_t cols() const { return cols_; }
+    // In-place uniform random initialization in [min_val, max_val]
+    void randomize(float min_val = -1.0f, float max_val = 1.0f);
+
 };

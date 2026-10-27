@@ -27,7 +27,9 @@ add_executable(engine_tests tests/test_tensor.cpp
         src/Tensor2D.cpp
         tests/test_tensor.cpp
         include/DenseLayer.h
-        src/DenseLayer.cpp)
+        src/DenseLayer.cpp
+        include/Loss.h
+        src/Loss.cpp)
 
 # 5. Link GoogleTest and your core library to the test executable
 target_link_libraries(engine_tests gtest_main ml_engine)
