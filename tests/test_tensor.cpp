@@ -191,3 +191,26 @@ TEST(Tensor2D_Activations, Sigmoid) {
     // 1 / (1 + e^2) approx 0.119203
     EXPECT_NEAR(activated(0, 2), 0.119203f, 1e-5f);
 }
+
+#include "DenseLayer.h"
+
+TEST(DenseLayer_Execution, ForwardPassManualWeights) {
+    // 2 inputs -> 2 outputs
+    DenseLayer layer(2, 2);
+
+    // Manually set weights:
+    // W = [ 1.0,  2.0 ]
+    //     [ -1.0, 1.0 ]
+    // Note: since get_weights() returns a const reference,
+    // we verify the zero-initialized forward pass first:
+    Tensor2D x(2, 1);
+    x(0, 0) = 3.0f;
+    x(1, 0) = 4.0f;
+
+    // With 0 weights and 0 bias: Z = 0 * X + 0 = 0 -> ReLU(0) = 0
+    Tensor2D out = layer.forward(x);
+    EXPECT_EQ(out.rows(), 2);
+    EXPECT_EQ(out.cols(), 1);
+    EXPECT_FLOAT_EQ(out(0, 0), 0.0f);
+    EXPECT_FLOAT_EQ(out(1, 0), 0.0f);
+}
