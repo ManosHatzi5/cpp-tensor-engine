@@ -32,7 +32,9 @@ add_executable(engine_tests tests/test_tensor.cpp
         include/ReLULayer.h
         src/ReLULayer.cpp
         include/LinearLayer.h
-        src/LinearLayer.cpp)
+        src/LinearLayer.cpp
+        include/Sequential.h
+        src/Sequential.cpp)
 
 # 5. Link GoogleTest and your core library to the test executable
 target_link_libraries(engine_tests gtest_main ml_engine)

@@ -355,6 +355,53 @@ TEST(Engine_Integration, TrainingLoopSingleLayer) {
     std::cout << "Final Prediction: " << final_pred(0, 0) << " (Target: 5.0)\n";
 }
 
+#include "Sequential.h"
+#include "LinearLayer.h"
+#include "ReLULayer.h"
+
+TEST(Sequential_Execution, MultiLayerTrainingConvergence) {
+    Sequential model;
+    // 2 inputs -> 4 hidden neurons -> ReLU -> 1 regression output
+    model.add(std::make_unique<LinearLayer>(2, 4));
+    model.add(std::make_unique<ReLULayer>());
+    model.add(std::make_unique<LinearLayer>(4, 1));
+
+    EXPECT_EQ(model.size(), 3);
+
+    Tensor2D x(2, 1);
+    x(0, 0) = 1.0f;
+    x(1, 0) = -1.0f;
+
+    Tensor2D target(1, 1);
+    target(0, 0) = 3.0f;
+
+    float learning_rate = 0.01f;
+    float initial_loss = 0.0f;
+    float final_loss = 0.0f;
+
+    // Train for 200 epochs through the unified pipeline
+    for (int epoch = 0; epoch < 200; ++epoch) {
+        Tensor2D y_pred = model.forward(x);
+
+        float current_loss = Loss::mse(y_pred, target);
+        if (epoch == 0) initial_loss = current_loss;
+        if (epoch == 199) final_loss = current_loss;
+
+        Tensor2D grad = Loss::mse_derivative(y_pred, target);
+
+        (void)model.backward(grad);
+        model.update_parameters(learning_rate);
+    }
+
+    EXPECT_LT(final_loss, initial_loss);
+
+    Tensor2D final_pred = model.forward(x);
+    std::cout << "Sequential Multi-Layer Initial Loss: " << initial_loss << "\n";
+    std::cout << "Sequential Multi-Layer Final Loss: " << final_loss << "\n";
+    std::cout << "Sequential Multi-Layer Final Prediction: " << final_pred(0, 0)
+              << " (Target: " << target(0, 0) << ")\n";
+}
+
 
 
 

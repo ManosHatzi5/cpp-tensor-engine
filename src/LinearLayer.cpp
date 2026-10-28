@@ -34,3 +34,20 @@ void LinearLayer::update_parameters(float learning_rate) {
     weights_ = weights_ + (d_weights_ * (-learning_rate));
     biases_  = biases_  + (d_biases_  * (-learning_rate));
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
