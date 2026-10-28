@@ -1,4 +1,6 @@
 #include <gtest/gtest.h>
+
+#include "LinearLayer.h"
 #include "Tensor2D.h"
 
 TEST(Tensor2D_Core, MemoryLayoutAndIndexing) {
@@ -192,11 +194,11 @@ TEST(Tensor2D_Activations, Sigmoid) {
     EXPECT_NEAR(activated(0, 2), 0.119203f, 1e-5f);
 }
 
-#include "DenseLayer.h"
+#include "LinearLayer.h"
 
 TEST(DenseLayer_Execution, ForwardPassManualWeights) {
     // 2 inputs -> 2 outputs
-    DenseLayer layer(2, 2);
+    LinearLayer layer(2, 2);
 
     // Manually set weights:
     // W = [ 1.0,  2.0 ]
@@ -215,7 +217,7 @@ TEST(DenseLayer_Execution, ForwardPassManualWeights) {
 
 
 TEST(DenseLayer_Execution, ForwardPassRandomWeights) {
-    DenseLayer layer(3, 2);
+    LinearLayer layer(3, 2);
 
     Tensor2D x(3, 1);
     x(0, 0) = 1.0f;
@@ -270,7 +272,7 @@ TEST(LossFunction_Execution, MSE_Evaluation) {
 
 TEST(DenseLayer_Execution, BackwardPassAnalytical) {
     // 2 inputs -> 1 output
-    DenseLayer layer(2, 1);
+    LinearLayer layer(2, 1);
 
     // Set deterministic weights and input:
     // W = [2.0, -1.0], B = [0.5]
@@ -303,6 +305,54 @@ TEST(DenseLayer_Execution, BackwardPassAnalytical) {
     EXPECT_EQ(d_in.cols(), 1);
     EXPECT_EQ(layer.get_d_weights().rows(), 1);
     EXPECT_EQ(layer.get_d_weights().cols(), 2);
+}
+
+TEST(Engine_Integration, TrainingLoopSingleLayer) {
+    LinearLayer layer(2, 1); // 2 inputs, 1 output
+
+    // Inputs chosen with negative signs to invert the deterministic
+    // negative random weights and force a positive Z (opening the ReLU gate)
+    Tensor2D x(2, 1);
+    x(0, 0) = -5.0f;
+    x(1, 0) = -5.0f;
+
+    // Target Y = [5.0]^T
+    // We want the network to learn W and B such that W*X + B = 5.0
+    Tensor2D target(1, 1);
+    target(0, 0) = 5.0f;
+
+    float learning_rate = 0.001f;
+    float initial_loss = 0.0f;
+    float final_loss = 0.0f;
+
+    // Train for 100 epochs
+    for (int epoch = 0; epoch < 100; ++epoch) {
+        // 1. Forward Pass
+        Tensor2D y_pred = layer.forward(x);
+
+        // 2. Compute Loss
+        float current_loss = Loss::mse(y_pred, target);
+        if (epoch == 0) initial_loss = current_loss;
+        if (epoch == 99) final_loss = current_loss;
+
+        // 3. Compute Loss Derivative
+        Tensor2D grad = Loss::mse_derivative(y_pred, target);
+
+        // 4. Backward Pass (calculates dW and dB)
+        (void)layer.backward(grad);
+
+        // 5. Optimizer Step
+        layer.update_parameters(learning_rate);
+    }
+
+    // The loss should have decreased significantly over 100 epochs
+    EXPECT_LT(final_loss, initial_loss);
+
+    // The final prediction should be reasonably close to 5.0
+    Tensor2D final_pred = layer.forward(x);
+    std::cout << "Initial Loss: " << initial_loss << "\n";
+    std::cout << "Final Loss: " << final_loss << "\n";
+    std::cout << "Final Prediction: " << final_pred(0, 0) << " (Target: 5.0)\n";
 }
 
 
