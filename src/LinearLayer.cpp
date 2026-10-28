@@ -13,19 +13,24 @@ LinearLayer::LinearLayer(size_t input_size, size_t output_size)
 }
 
 Tensor2D LinearLayer::forward(const Tensor2D& input) {
+    //(No activation applied here)
     last_input_ = input;
-    // Z = W * X + B  (No activation applied here)
-    return weights_.matmul(input) + biases_;
+    // Z = (W * X) + B with virtual broadcasting across batch columns
+    return weights_.matmul(input).add_bias(biases_);
 }
 
 Tensor2D LinearLayer::backward(const Tensor2D& d_out) {
     // d_out is dZ (or delta).
-    // dW = dZ * X^T
+    // 1. dW = dZ * X^T
+    // Shape check: (D_out x B) * (B x D_in) -> (D_out x D_in)
     d_weights_ = d_out.matmul(last_input_.transpose());
-    // dB = dZ
-    d_biases_ = d_out;
 
-    // Return dX = W^T * dZ
+    // 2. dB = sum along columns of dZ
+    // Shape check: (D_out x B) -> (D_out x 1)
+    d_biases_ = d_out.sum_along_columns();
+
+    // 3. dX = W^T * dZ (passed to preceding layer)
+    // Shape check: (D_in x D_out) * (D_out x B) -> (D_in x B)
     return weights_.transpose().matmul(d_out);
 }
 
@@ -34,6 +39,7 @@ void LinearLayer::update_parameters(float learning_rate) {
     weights_ = weights_ + (d_weights_ * (-learning_rate));
     biases_  = biases_  + (d_biases_  * (-learning_rate));
 }
+
 
 
 

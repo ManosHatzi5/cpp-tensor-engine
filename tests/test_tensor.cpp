@@ -402,6 +402,99 @@ TEST(Sequential_Execution, MultiLayerTrainingConvergence) {
               << " (Target: " << target(0, 0) << ")\n";
 }
 
+TEST(Tensor2D_BatchOps, AddBiasBroadcasting) {
+    // 2x3 matrix (2 features, batch size 3)
+    Tensor2D mat(2, 3);
+    mat(0, 0) = 1.0f; mat(0, 1) = 2.0f; mat(0, 2) = 3.0f;
+    mat(1, 0) = 4.0f; mat(1, 1) = 5.0f; mat(1, 2) = 6.0f;
+
+    // 2x1 bias vector
+    Tensor2D bias(2, 1);
+    bias(0, 0) = 10.0f;
+    bias(1, 0) = 20.0f;
+
+    Tensor2D res = mat.add_bias(bias);
+
+    EXPECT_EQ(res.rows(), 2);
+    EXPECT_EQ(res.cols(), 3);
+    EXPECT_FLOAT_EQ(res(0, 0), 11.0f);
+    EXPECT_FLOAT_EQ(res(0, 1), 12.0f);
+    EXPECT_FLOAT_EQ(res(0, 2), 13.0f);
+    EXPECT_FLOAT_EQ(res(1, 0), 24.0f);
+    EXPECT_FLOAT_EQ(res(1, 1), 25.0f);
+    EXPECT_FLOAT_EQ(res(1, 2), 26.0f);
+}
+
+TEST(Tensor2D_BatchOps, SumAlongColumnsReduction) {
+    // 2x3 matrix
+    Tensor2D mat(2, 3);
+    mat(0, 0) = 1.0f; mat(0, 1) = 2.0f; mat(0, 2) = 3.0f; // Sum = 6
+    mat(1, 0) = 4.0f; mat(1, 1) = 5.0f; mat(1, 2) = 6.0f; // Sum = 15
+
+    Tensor2D reduced = mat.sum_along_columns();
+
+    EXPECT_EQ(reduced.rows(), 2);
+    EXPECT_EQ(reduced.cols(), 1);
+    EXPECT_FLOAT_EQ(reduced(0, 0), 6.0f);
+    EXPECT_FLOAT_EQ(reduced(1, 0), 15.0f);
+}
+
+TEST(Engine_Integration, BatchTrainingMultiSample) {
+    // 2 inputs -> 4 hidden neurons -> ReLU -> 1 regression output
+    Sequential model;
+    model.add(std::make_unique<LinearLayer>(2, 4));
+    model.add(std::make_unique<ReLULayer>());
+    model.add(std::make_unique<LinearLayer>(4, 1));
+
+    // Batch size B = 3, Input features D_in = 2
+    // Matrix shape: (2 x 3)
+    // Sample 0: [ 1.0,  2.0]^T -> Target: 5.0
+    // Sample 1: [-1.0, -1.0]^T -> Target: -2.0
+    // Sample 2: [ 0.5,  1.5]^T -> Target: 3.5
+    Tensor2D x(2, 3);
+    x(0, 0) =  1.0f; x(0, 1) = -1.0f; x(0, 2) = 0.5f;
+    x(1, 0) =  2.0f; x(1, 1) = -1.0f; x(1, 2) = 1.5f;
+
+    // Target shape: (1 x 3)
+    Tensor2D target(1, 3);
+    target(0, 0) =  5.0f;
+    target(0, 1) = -2.0f;
+    target(0, 2) =  3.5f;
+
+    float learning_rate = 0.01f;
+    float initial_loss = 0.0f;
+    float final_loss = 0.0f;
+
+    for (int epoch = 0; epoch < 300; ++epoch) {
+        // Forward: (2 x 3) -> (4 x 3) -> (4 x 3) -> (1 x 3)
+        Tensor2D y_pred = model.forward(x);
+
+        float current_loss = Loss::mse(y_pred, target);
+        if (epoch == 0) initial_loss = current_loss;
+        if (epoch == 299) final_loss = current_loss;
+
+        // Gradient shape: (1 x 3)
+        Tensor2D grad = Loss::mse_derivative(y_pred, target);
+
+        // Backward: accumulates dW and sums dB across all 3 batch columns
+        (void)model.backward(grad);
+
+        // Optimizer step
+        model.update_parameters(learning_rate);
+    }
+
+    EXPECT_LT(final_loss, initial_loss);
+
+    Tensor2D final_pred = model.forward(x);
+    std::cout << "Batch Initial Loss: " << initial_loss << "\n";
+    std::cout << "Batch Final Loss: "   << final_loss << "\n";
+    std::cout << "Predictions vs Targets:\n";
+    for (size_t b = 0; b < 3; ++b) {
+        std::cout << "  Sample " << b << ": Pred = " << final_pred(0, b)
+                  << " | Target = " << target(0, b) << "\n";
+    }
+}e
+
 
 
 

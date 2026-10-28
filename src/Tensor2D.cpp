@@ -121,6 +121,42 @@ Tensor2D Tensor2D::relu_derivative() const {
     return result;
 }
 
+// for information abt this function check the header file
+Tensor2D Tensor2D::add_bias(const Tensor2D& bias) const {
+    if (bias.cols() != 1 || bias.rows() != rows_) {
+        throw std::invalid_argument("Bias must be a column vector matching the matrix row count.");
+    }
+
+    Tensor2D result(rows_, cols_);
+
+    // Virtual broadcasting: loop over row-major storage
+    for (size_t r = 0; r < rows_; ++r) {
+        float b = bias(r, 0); // Read the bias scalar once per row into a register
+        const size_t row_offset = r * cols_;
+        for (size_t c = 0; c < cols_; ++c) {
+            result.data_[row_offset + c] = data_[row_offset + c] + b;
+        }
+    }
+
+    return result;
+}
+
+// for information abt this function check the header file
+Tensor2D Tensor2D::sum_along_columns() const {
+    Tensor2D result(rows_, 1);
+
+    for (size_t r = 0; r < rows_; ++r) {
+        float sum = 0.0f;
+        const size_t row_offset = r * cols_;
+        for (size_t c = 0; c < cols_; ++c) {
+            sum += data_[row_offset + c];
+        }
+        result(r, 0) = sum;
+    }
+
+    return result;
+}
+
 
 
 
