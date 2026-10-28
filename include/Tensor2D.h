@@ -40,6 +40,9 @@ public:
     [[nodiscard]] Tensor2D relu() const;
     [[nodiscard]] Tensor2D sigmoid() const;
 
+    // Derivative of Functions
+    [[nodiscard]] Tensor2D relu_derivative() const;
+
     // In-place uniform random initialization in [min_val, max_val]
     void randomize(float min_val = -1.0f, float max_val = 1.0f);
 

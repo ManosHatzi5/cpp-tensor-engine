@@ -113,6 +113,13 @@ void Tensor2D::randomize(float min_val, float max_val) {
     }
 }
 
+Tensor2D Tensor2D::relu_derivative() const {
+    Tensor2D result(rows_, cols_);
+    for (size_t i = 0; i < rows_ * cols_; ++i) {
+        result.data_[i] = (data_[i] > 0.0f) ? 1.0f : 0.0f;
+    }
+    return result;
+}
 
 
 

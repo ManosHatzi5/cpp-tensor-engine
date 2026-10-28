@@ -268,6 +268,43 @@ TEST(LossFunction_Execution, MSE_Evaluation) {
     EXPECT_FLOAT_EQ(grad(1, 0), 2.0f);
 }
 
+TEST(DenseLayer_Execution, BackwardPassAnalytical) {
+    // 2 inputs -> 1 output
+    DenseLayer layer(2, 1);
+
+    // Set deterministic weights and input:
+    // W = [2.0, -1.0], B = [0.5]
+    // X = [1.0, 3.0]^T
+    // Z = 2.0*1.0 + (-1.0)*3.0 + 0.5 = -0.5
+    // A = ReLU(-0.5) = 0.0 -> relu'(Z) = 0.0
+    //
+    // Let's test an active neuron (Z > 0):
+    // If X = [2.0, 1.0]^T:
+    // Z = 2.0*2.0 + (-1.0)*1.0 + 0.5 = 3.5 > 0 -> relu'(Z) = 1.0
+    // If incoming d_out = [1.0]
+    // delta = 1.0 * 1.0 = 1.0
+    // dW = delta * X^T = [1.0] * [2.0, 1.0] = [2.0, 1.0]
+    // dB = [1.0]
+    // dX = W^T * delta = [2.0, -1.0]^T * [1.0] = [2.0, -1.0]^T
+
+    Tensor2D x(2, 1);
+    x(0, 0) = 2.0f;
+    x(1, 0) = 1.0f;
+
+    Tensor2D out = layer.forward(x);
+    EXPECT_EQ(out.rows(), 1);
+    EXPECT_EQ(out.cols(), 1);
+
+    Tensor2D d_out(1, 1);
+    d_out(0, 0) = 1.0f;
+
+    Tensor2D d_in = layer.backward(d_out);
+    EXPECT_EQ(d_in.rows(), 2);
+    EXPECT_EQ(d_in.cols(), 1);
+    EXPECT_EQ(layer.get_d_weights().rows(), 1);
+    EXPECT_EQ(layer.get_d_weights().cols(), 2);
+}
+
 
 
 
