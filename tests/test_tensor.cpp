@@ -493,7 +493,37 @@ TEST(Engine_Integration, BatchTrainingMultiSample) {
         std::cout << "  Sample " << b << ": Pred = " << final_pred(0, b)
                   << " | Target = " << target(0, b) << "\n";
     }
-}e
+}
+
+#include "SigmoidLayer.h"
+
+TEST(SigmoidLayer_Execution, ForwardAndBackwardAnalytic) {
+    SigmoidLayer sigmoid;
+
+    // Test input Z = [0.0, 2.0]^T
+    Tensor2D z(2, 1);
+    z(0, 0) = 0.0f;
+    z(1, 0) = 2.0f;
+
+    Tensor2D a = sigmoid.forward(z);
+
+    // sigma(0) = 0.5
+    // sigma(2) = 1 / (1 + e^-2) approx 0.880797
+    EXPECT_FLOAT_EQ(a(0, 0), 0.5f);
+    EXPECT_NEAR(a(1, 0), 0.880797f, 1e-5f);
+
+    // Incoming gradient dA = [1.0, 1.0]^T
+    Tensor2D d_out(2, 1);
+    d_out(0, 0) = 1.0f;
+    d_out(1, 0) = 1.0f;
+
+    Tensor2D d_in = sigmoid.backward(d_out);
+
+    // dZ[0] = 1.0 * 0.5 * (1 - 0.5) = 0.25
+    // dZ[1] = 1.0 * 0.880797 * (1 - 0.880797) = 0.880797 * 0.119203 approx 0.1049935
+    EXPECT_FLOAT_EQ(d_in(0, 0), 0.25f);
+    EXPECT_NEAR(d_in(1, 0), 0.1049935f, 1e-5f);
+}
 
 
 

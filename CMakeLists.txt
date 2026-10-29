@@ -34,7 +34,9 @@ add_executable(engine_tests tests/test_tensor.cpp
         include/LinearLayer.h
         src/LinearLayer.cpp
         include/Sequential.h
-        src/Sequential.cpp)
+        src/Sequential.cpp
+        include/SigmoidLayer.h
+        src/SigmoidLayer.cpp)
 
 # 5. Link GoogleTest and your core library to the test executable
 target_link_libraries(engine_tests gtest_main ml_engine)

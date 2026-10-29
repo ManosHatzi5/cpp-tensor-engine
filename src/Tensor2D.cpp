@@ -93,14 +93,6 @@ Tensor2D Tensor2D::relu() const {
     return result;
 }
 
-Tensor2D Tensor2D::sigmoid() const {
-    Tensor2D result(rows_, cols_);
-    for (size_t i = 0; i < rows_ * cols_; ++i) {
-        result.data_[i] = 1.0f / (1.0f + std::exp(-data_[i]));
-    }
-    return result;
-}
-
 #include <random>
 
 void Tensor2D::randomize(float min_val, float max_val) {
@@ -157,6 +149,33 @@ Tensor2D Tensor2D::sum_along_columns() const {
     return result;
 }
 
+#include <cmath>
+
+Tensor2D Tensor2D::sigmoid() const {
+    Tensor2D result(rows_, cols_);
+    const size_t total_elements = rows_ * cols_;
+
+    for (size_t i = 0; i < total_elements; ++i) {
+        // Evaluate sigma(z) = 1.0 / (1.0 + e^-z)
+        result.data_[i] = 1.0f / (1.0f + std::exp(-data_[i]));
+    }
+
+    return result;
+}
+
+Tensor2D Tensor2D::sigmoid_derivative_from_output() const {
+    Tensor2D result(rows_, cols_);
+    const size_t total_elements = rows_ * cols_;
+
+    for (size_t i = 0; i < total_elements; ++i) {
+        const float a = data_[i];
+        // sigma'(z) = a * (1 - a)
+        // This is O(1) pure arithmetic with no transcendent function calls
+        result.data_[i] = a * (1.0f - a); 
+    }
+
+    return result;
+}
 
 
 

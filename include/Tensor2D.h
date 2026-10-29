@@ -36,12 +36,16 @@ public:
     // Matrix Transposition
     [[nodiscard]] Tensor2D transpose() const;
 
-    // Activation Functions
+    // ACTIVATION FUNCTIONS     /-------------/
     [[nodiscard]] Tensor2D relu() const;
+    // Computes the element-wise sigmoid activation: 1 / (1 + exp(-z))
     [[nodiscard]] Tensor2D sigmoid() const;
 
-    // Derivative of Functions
+    // DERIVATIVES OF FUNCTIONS /-------------/
     [[nodiscard]] Tensor2D relu_derivative() const;
+    // Computes the derivative assuming the caller tensor is the ALREADY ACTIVATED output A.
+    // Evaluates a * (1.0f - a) element-wise to avoid recomputing exp(-z).
+    [[nodiscard]] Tensor2D sigmoid_derivative_from_output() const;
 
     // Kernel: Adds a column vector (rows x 1) across all columns of this matrix (rows x cols)
     // to make batches possible and not going one by one we need to broadcast our bias vector
