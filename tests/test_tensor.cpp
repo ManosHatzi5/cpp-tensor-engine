@@ -231,7 +231,7 @@ TEST(DenseLayer_Execution, ForwardPassRandomWeights) {
 
     // Because weights are randomized in [-0.5, 0.5], output is non-zero
     // (either positive due to ReLU or clamped to 0)
-    const Tensor2D& w = layer.get_weights();
+    const Tensor2D& w = layer.weights();
     bool all_zero = true;
     for (size_t r = 0; r < w.rows(); ++r) {
         for (size_t c = 0; c < w.cols(); ++c) {
@@ -303,8 +303,8 @@ TEST(DenseLayer_Execution, BackwardPassAnalytical) {
     Tensor2D d_in = layer.backward(d_out);
     EXPECT_EQ(d_in.rows(), 2);
     EXPECT_EQ(d_in.cols(), 1);
-    EXPECT_EQ(layer.get_d_weights().rows(), 1);
-    EXPECT_EQ(layer.get_d_weights().cols(), 2);
+    EXPECT_EQ(layer.weights().rows(), 1);
+    EXPECT_EQ(layer.weights().cols(), 2);
 }
 
 TEST(Engine_Integration, TrainingLoopSingleLayer) {
@@ -546,6 +546,62 @@ TEST(Loss_Functions, BinaryCrossEntropyAnalytic) {
     // Sample 1: 0.5 * (0.1 - 0.0) / (0.1 * 0.9) = 0.5 * (0.1 / 0.09) approx 0.555555
     EXPECT_NEAR(grad(0, 0), -0.625f, 1e-5f);
     EXPECT_NEAR(grad(0, 1), 0.555555f, 1e-4f);
+}
+
+TEST(Parameter_Initialization, HeAndXavierVariance) {
+    const size_t in_features = 2000;
+    const size_t out_features = 2000;
+    const size_t total_elements = in_features * out_features;
+
+    // 1. Verify He Initialization
+    LinearLayer he_layer(in_features, out_features, InitScheme::He);
+    const auto& w_he = he_layer.weights();
+
+    float sum_he = 0.0f;
+    for (size_t r = 0; r < out_features; ++r) {
+        for (size_t c = 0; c < in_features; ++c) {
+            sum_he += w_he(r, c);
+        }
+    }
+    float mean_he = sum_he / static_cast<float>(total_elements);
+
+    float var_sum_he = 0.0f;
+    for (size_t r = 0; r < out_features; ++r) {
+        for (size_t c = 0; c < in_features; ++c) {
+            float diff = w_he(r, c) - mean_he;
+            var_sum_he += diff * diff;
+        }
+    }
+    float var_he = var_sum_he / static_cast<float>(total_elements);
+    float expected_var_he = 2.0f / static_cast<float>(in_features); // 2 / 2000 = 0.001
+
+    EXPECT_NEAR(mean_he, 0.0f, 1e-3f);
+    EXPECT_NEAR(var_he, expected_var_he, 1e-4f);
+
+    // 2. Verify Xavier Initialization
+    LinearLayer xavier_layer(in_features, out_features, InitScheme::Xavier);
+    const auto& w_xav = xavier_layer.weights();
+
+    float sum_xav = 0.0f;
+    for (size_t r = 0; r < out_features; ++r) {
+        for (size_t c = 0; c < in_features; ++c) {
+            sum_xav += w_xav(r, c);
+        }
+    }
+    float mean_xav = sum_xav / static_cast<float>(total_elements);
+
+    float var_sum_xav = 0.0f;
+    for (size_t r = 0; r < out_features; ++r) {
+        for (size_t c = 0; c < in_features; ++c) {
+            float diff = w_xav(r, c) - mean_xav;
+            var_sum_xav += diff * diff;
+        }
+    }
+    float var_xav = var_sum_xav / static_cast<float>(total_elements);
+    float expected_var_xav = 2.0f / static_cast<float>(in_features + out_features); // 2 / 4000 = 0.0005
+
+    EXPECT_NEAR(mean_xav, 0.0f, 1e-3f);
+    EXPECT_NEAR(var_xav, expected_var_xav, 1e-4f);
 }
 
 

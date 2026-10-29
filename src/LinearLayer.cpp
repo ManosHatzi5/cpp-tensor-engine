@@ -1,15 +1,50 @@
 #include "LinearLayer.h"
+#include <cmath>
+#include <random>
 
 // Linear Layer acts simply as the linear transformation z = wx + b
 // in general for this project each layer acts as a mathematical box/transformation
 
-LinearLayer::LinearLayer(size_t input_size, size_t output_size)
-    : weights_(output_size, input_size),
-      biases_(output_size, 1),
-      d_weights_(output_size, input_size),
-      d_biases_(output_size, 1),
-      last_input_(input_size, 1) {
-    weights_.randomize(-0.5f, 0.5f);
+LinearLayer::LinearLayer(size_t in_features, size_t out_features, InitScheme scheme)
+    : in_features_(in_features),
+      out_features_(out_features),
+      weights_(out_features, in_features),
+      biases_(out_features, 1),
+      d_weights_(out_features, in_features),
+      d_biases_(out_features, 1),
+      last_input_(0, 0) {
+    initialize_parameters(scheme);
+}
+
+void LinearLayer::initialize_parameters(InitScheme scheme) {
+    if (scheme == InitScheme::Zeros) {
+        return;
+    }
+
+    // Deterministic seed for reproducible tests
+    std::mt19937 gen(42);
+
+    float stddev = 0.0f;
+    if (scheme == InitScheme::He) {
+        // Var(W) = 2 / n_in  ==>  stddev = sqrt(2 / n_in)
+        stddev = std::sqrt(2.0f / static_cast<float>(in_features_));
+    } else if (scheme == InitScheme::Xavier) {
+        // Var(W) = 2 / (n_in + n_out)  ==>  stddev = sqrt(2 / (n_in + n_out))
+        stddev = std::sqrt(2.0f / static_cast<float>(in_features_ + out_features_));
+    }
+
+    std::normal_distribution<float> dist(0.0f, stddev);
+
+    for (size_t r = 0; r < out_features_; ++r) {
+        for (size_t c = 0; c < in_features_; ++c) {
+            weights_(r, c) = dist(gen);
+        }
+    }
+
+    // Biases are initialized to 0.0f
+    for (size_t r = 0; r < out_features_; ++r) {
+        biases_(r, 0) = 0.0f;
+    }
 }
 
 Tensor2D LinearLayer::forward(const Tensor2D& input) {
