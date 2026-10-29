@@ -1,5 +1,7 @@
 #include "Loss.h"
 #include <stdexcept>
+#include <algorithm>
+#include <cmath>
 
 namespace Loss {
 
@@ -58,5 +60,52 @@ Tensor2D mse_derivative(const Tensor2D& y_pred, const Tensor2D& y_true) {
 
     return grad;
 }
+    
+float bce(const Tensor2D& y_pred, const Tensor2D& y_true) {
+    if (y_pred.rows() != y_true.rows() || y_pred.cols() != y_true.cols()) {
+        throw std::invalid_argument("BCE Loss dimension mismatch between prediction and target.");
+    }
+
+    const float eps = 1e-7f; // Numerical safeguard against log(0)
+    float total_loss = 0.0f;
+    const size_t total_elements = y_pred.rows() * y_pred.cols();
+
+    for (size_t r = 0; r < y_pred.rows(); ++r) {
+        for (size_t c = 0; c < y_pred.cols(); ++c) {
+            float y = y_true(r, c);
+            // Clamp probability within [eps, 1 - eps]
+            float a = std::clamp(y_pred(r, c), eps, 1.0f - eps);
+            total_loss += -(y * std::log(a) + (1.0f - y) * std::log(1.0f - a));
+        }
+    }
+
+    // Average across batch elements
+    return total_loss / static_cast<float>(total_elements);
+}
+
+Tensor2D bce_derivative(const Tensor2D& y_pred, const Tensor2D& y_true) {
+    if (y_pred.rows() != y_true.rows() || y_pred.cols() != y_true.cols()) {
+        throw std::invalid_argument("BCE Derivative dimension mismatch between prediction and target.");
+    }
+
+    const float eps = 1e-7f;
+    const size_t total_elements = y_pred.rows() * y_pred.cols();
+    const float scale = 1.0f / static_cast<float>(total_elements);
+
+    Tensor2D grad(y_pred.rows(), y_pred.cols());
+
+    for (size_t r = 0; r < y_pred.rows(); ++r) {
+        for (size_t c = 0; c < y_pred.cols(); ++c) {
+            float y = y_true(r, c);
+            float a = std::clamp(y_pred(r, c), eps, 1.0f - eps);
+
+            // dL/da = (1/B) * (a - y) / (a * (1 - a))
+            grad(r, c) = scale * ((a - y) / (a * (1.0f - a)));
+        }
+    }
+
+    return grad;
+}
+
 
 } // namespace Loss

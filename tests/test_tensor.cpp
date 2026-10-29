@@ -525,6 +525,29 @@ TEST(SigmoidLayer_Execution, ForwardAndBackwardAnalytic) {
     EXPECT_NEAR(d_in(1, 0), 0.1049935f, 1e-5f);
 }
 
+TEST(Loss_Functions, BinaryCrossEntropyAnalytic) {
+    // 1 feature, batch size 2
+    Tensor2D pred(1, 2);
+    pred(0, 0) = 0.8f;
+    pred(0, 1) = 0.1f;
+
+    Tensor2D target(1, 2);
+    target(0, 0) = 1.0f;
+    target(0, 1) = 0.0f;
+
+    // Sample 0: -ln(0.8) approx 0.2231435
+    // Sample 1: -ln(1 - 0.1) = -ln(0.9) approx 0.1053605
+    // Mean Loss approx (0.2231435 + 0.1053605) / 2 = 0.164252
+    float loss = Loss::bce(pred, target);
+    EXPECT_NEAR(loss, 0.164252f, 1e-5f);
+
+    Tensor2D grad = Loss::bce_derivative(pred, target);
+    // Sample 0: 0.5 * (0.8 - 1.0) / (0.8 * 0.2) = 0.5 * (-0.2 / 0.16) = -0.625
+    // Sample 1: 0.5 * (0.1 - 0.0) / (0.1 * 0.9) = 0.5 * (0.1 / 0.09) approx 0.555555
+    EXPECT_NEAR(grad(0, 0), -0.625f, 1e-5f);
+    EXPECT_NEAR(grad(0, 1), 0.555555f, 1e-4f);
+}
+
 
 
 
