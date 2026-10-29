@@ -604,6 +604,84 @@ TEST(Parameter_Initialization, HeAndXavierVariance) {
     EXPECT_NEAR(var_xav, expected_var_xav, 1e-4f);
 }
 
+#include "Sequential.h"
+#include "LinearLayer.h"
+#include "ReLULayer.h"
+#include "SigmoidLayer.h"
+#include "Loss.h"
+#include <iostream>
+
+TEST(Engine_Integration, XORClassificationBenchmark) {
+    // 1. Construct the Non-Linear Architecture
+    Sequential model;
+
+    // Hidden Layer: 2 inputs -> 4 neurons, He initialization for ReLU
+    model.add(std::make_unique<LinearLayer>(2, 4, InitScheme::He));
+    model.add(std::make_unique<ReLULayer>());
+
+    // Output Layer: 4 inputs -> 1 probability, Xavier initialization for Sigmoid
+    model.add(std::make_unique<LinearLayer>(4, 1, InitScheme::Xavier));
+    model.add(std::make_unique<SigmoidLayer>());
+
+    // 2. Prepare the XOR Dataset (Full Batch of 4 samples)
+    // Shape: (D_in x B) = (2 x 4)
+    Tensor2D X(2, 4);
+    X(0, 0) = 0.0f; X(1, 0) = 0.0f; // Sample 0: [0, 0]^T
+    X(0, 1) = 0.0f; X(1, 1) = 1.0f; // Sample 1: [0, 1]^T
+    X(0, 2) = 1.0f; X(1, 2) = 0.0f; // Sample 2: [1, 0]^T
+    X(0, 3) = 1.0f; X(1, 3) = 1.0f; // Sample 3: [1, 1]^T
+
+    // Shape: (D_out x B) = (1 x 4)
+    Tensor2D Y(1, 4);
+    Y(0, 0) = 0.0f; // 0 XOR 0 = 0
+    Y(0, 1) = 1.0f; // 0 XOR 1 = 1
+    Y(0, 2) = 1.0f; // 1 XOR 0 = 1
+    Y(0, 3) = 0.0f; // 1 XOR 1 = 0
+
+    // 3. Training Loop Configuration
+    float learning_rate = 0.5f; // High LR for standard SGD on tiny deterministic batches
+    float initial_loss = 0.0f;
+    float final_loss = 0.0f;
+    const int epochs = 3000;
+
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Forward Pass
+        Tensor2D pred = model.forward(X);
+
+        // Loss Calculation
+        float loss = Loss::bce(pred, Y);
+        if (epoch == 0) initial_loss = loss;
+        if (epoch == epochs - 1) final_loss = loss;
+
+        // Backward Pass
+        Tensor2D grad = Loss::bce_derivative(pred, Y);
+        (void)model.backward(grad);
+
+        // Optimizer Step
+        model.update_parameters(learning_rate);
+    }
+
+    // 4. Console Verification
+    Tensor2D final_pred = model.forward(X);
+    std::cout << "--- XOR Benchmark Results ---\n";
+    std::cout << "Initial BCE Loss: " << initial_loss << "\n";
+    std::cout << "Final BCE Loss:   " << final_loss << "\n\n";
+
+    for (size_t b = 0; b < 4; ++b) {
+        std::cout << "Input [" << X(0, b) << ", " << X(1, b) << "] "
+                  << "-> Target " << Y(0, b)
+                  << " | Prediction: " << final_pred(0, b) << "\n";
+    }
+
+    // 5. Strict Mathematical Assertions
+    // The engine must confidently cross the 0.5 decision boundary
+    EXPECT_LT(final_loss, 0.05f); // Loss should be near zero
+    EXPECT_LT(final_pred(0, 0), 0.1f); // Should confidently predict 0
+    EXPECT_GT(final_pred(0, 1), 0.9f); // Should confidently predict 1
+    EXPECT_GT(final_pred(0, 2), 0.9f); // Should confidently predict 1
+    EXPECT_LT(final_pred(0, 3), 0.1f); // Should confidently predict 0
+}
+
 
 
 
