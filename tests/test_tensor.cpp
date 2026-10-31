@@ -676,6 +676,122 @@ TEST(Engine_Integration, XORClassificationBenchmark) {
     EXPECT_LT(final_pred(0, 3), 0.1f); // Should confidently predict 0
 }
 
+TEST(Tensor2D_HPC, MatmulTiledEquivalence) {
+    // 1. Non-multiple dimension case (tests boundary handling / std::min logic)
+    // M = 65, K = 70, N = 55 (Tile size = 32)
+    const size_t M = 65;
+    const size_t K = 70;
+    const size_t N = 55;
+
+    Tensor2D A(M, K);
+    Tensor2D B(K, N);
+
+    // Initialize with deterministic, non-trivial float values
+    for (size_t r = 0; r < M; ++r) {
+        for (size_t c = 0; c < K; ++c) {
+            A(r, c) = static_cast<float>((r * 13 + c * 7) % 100) / 10.0f - 5.0f;
+        }
+    }
+
+    for (size_t r = 0; r < K; ++r) {
+        for (size_t c = 0; c < N; ++c) {
+            B(r, c) = static_cast<float>((r * 11 + c * 17) % 100) / 10.0f - 5.0f;
+        }
+    }
+
+    // 2. Compute reference output via naive matmul
+    Tensor2D expected = A.matmul(B);
+
+    // 3. Compute output via cache-tiled kernel (default tile size = 32)
+    Tensor2D actual = A.matmul_tiled(B, 32);
+
+    // Verify structural invariants
+    ASSERT_EQ(actual.rows(), expected.rows());
+    ASSERT_EQ(actual.cols(), expected.cols());
+
+    // 4. Verify numerical equivalence element-by-element
+    // Float additions in different order can cause minor floating-point rounding
+    // differences due to non-associativity, so we use EXPECT_NEAR with epsilon.
+    const float* exp_ptr = expected.data();
+    const float* act_ptr = actual.data();
+    const size_t total_elements = actual.size();
+
+    for (size_t i = 0; i < total_elements; ++i) {
+        EXPECT_NEAR(act_ptr[i], exp_ptr[i], 1e-4f)
+            << "Mismatch at flat index " << i;
+    }
+}
+
+#include <chrono>
+#include <iomanip>
+
+TEST(Tensor2D_HPC, MatmulBenchmark_512x512) {
+    const size_t N = 512;
+
+    // Total floating-point operations for N x N matrix multiplication:
+    // For each element C[i, j], we do N multiplications and (N - 1) additions (~ 2 * N FLOPs).
+    // Total FLOPs = 2 * N^3.
+    const double total_flops = 2.0 * static_cast<double>(N) * static_cast<double>(N) * static_cast<double>(N);
+
+    Tensor2D A(N, N);
+    Tensor2D B(N, N);
+
+    // Initialize with non-zero values to avoid compiler short-circuiting
+    for (size_t r = 0; r < N; ++r) {
+        for (size_t c = 0; c < N; ++c) {
+            A(r, c) = 0.5f;
+            B(r, c) = 0.5f;
+        }
+    }
+
+    std::cout << "\n======================================================\n";
+    std::cout << "  BENCHMARK: 512x512 Matrix Multiplication (Single-Thread)\n";
+    std::cout << "  Total Operations: " << total_flops / 1e9 << " GFLOP\n";
+    std::cout << "======================================================\n";
+
+    // -------------------------------------------------------------------------
+    // 1. Benchmark Naive Matmul (i -> j -> k)
+    // -------------------------------------------------------------------------
+    auto start_naive = std::chrono::high_resolution_clock::now();
+    Tensor2D c_naive = A.matmul(B);
+    auto end_naive = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double, std::milli> naive_ms = end_naive - start_naive;
+    double naive_gflops = (total_flops / (naive_ms.count() / 1000.0)) / 1e9;
+
+    std::cout << std::left << std::setw(24) << "Naive Matmul:"
+              << std::fixed << std::setprecision(2)
+              << naive_ms.count() << " ms | "
+              << naive_gflops << " GFLOPS\n";
+
+    // -------------------------------------------------------------------------
+    // 2. Benchmark Cache-Tiled Matmul (Block Size = 32, i -> k -> j)
+    // -------------------------------------------------------------------------
+    auto start_tiled = std::chrono::high_resolution_clock::now();
+    Tensor2D c_tiled = A.matmul_tiled(B, 32);
+    auto end_tiled = std::chrono::high_resolution_clock::now();
+
+    std::chrono::duration<double, std::milli> tiled_ms = end_tiled - start_tiled;
+    double tiled_gflops = (total_flops / (tiled_ms.count() / 1000.0)) / 1e9;
+
+    std::cout << std::left << std::setw(24) << "Tiled Matmul (32x32):"
+              << std::fixed << std::setprecision(2)
+              << tiled_ms.count() << " ms | "
+              << tiled_gflops << " GFLOPS\n";
+
+    // -------------------------------------------------------------------------
+    // 3. Speedup Verification
+    // -------------------------------------------------------------------------
+    double speedup = naive_ms.count() / tiled_ms.count();
+    std::cout << "------------------------------------------------------\n";
+    std::cout << "Speedup Factor: " << std::fixed << std::setprecision(2) << speedup << "x faster\n";
+    std::cout << "======================================================\n\n";
+
+    // Sanity check: Ensure tiled version produced identical results and is faster
+    EXPECT_FLOAT_EQ(c_naive(0, 0), c_tiled(0, 0));
+    EXPECT_LT(tiled_ms.count(), naive_ms.count());
+}
+
 
 
 

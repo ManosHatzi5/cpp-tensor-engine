@@ -80,6 +80,16 @@ public:
      * @brief Total number of elements in the tensor (rows * cols).
      */
     [[nodiscard]] size_t size() const noexcept { return data_.size(); }
+
+    /**
+     * @brief Blocked matrix multiplication using cache tiling.
+     * @details Partitions matrices into sub-blocks of size (block_size x block_size)
+     *          to ensure working sets fit within L1/L2 data cache boundaries.
+     * @param other Matrix B (K x N).
+     * @param block_size Edge length of the tile (default: 32).
+     * @return Result matrix C = A * B of shape (M x N).
+     */
+    [[nodiscard]] Tensor2D matmul_tiled(const Tensor2D& other, size_t block_size = 32) const;
 };
 
 

@@ -178,6 +178,63 @@ Tensor2D Tensor2D::sigmoid_derivative_from_output() const {
 }
 
 
+Tensor2D Tensor2D::matmul_tiled(const Tensor2D& other, size_t block_size) const {
+    if (cols_ != other.rows_) {
+        throw std::invalid_argument("Matrix inner dimensions must match for multiplication.");
+    }
+
+    const size_t M = rows_;
+    const size_t K = cols_;
+    const size_t N = other.cols_;
+
+    // Initialize accumulator matrix C to zero
+    Tensor2D result(M, N);
+
+    const float* a_data = this->data();
+    const float* b_data = other.data();
+    float* c_data = result.data();
+
+    // -------------------------------------------------------------------------
+    // OUTER 3 LOOPS: Block / Tile Coordinates
+    // Jump across memory in strides of `block_size` (default = 32x32)
+    // -------------------------------------------------------------------------
+    for (size_t i0 = 0; i0 < M; i0 += block_size) {
+        const size_t i_max = std::min(i0 + block_size, M);
+
+        for (size_t j0 = 0; j0 < N; j0 += block_size) {
+            const size_t j_max = std::min(j0 + block_size, N);
+
+            for (size_t k0 = 0; k0 < K; k0 += block_size) {
+                const size_t k_max = std::min(k0 + block_size, K);
+
+                // -------------------------------------------------------------
+                // INNER 3 LOOPS: Micro-Kernel within L1/L2 Cache Boundaries
+                // Loop order: i -> k -> j (enables horizontal, unit-stride streaming)
+                // -------------------------------------------------------------
+                for (size_t i = i0; i < i_max; ++i) {
+                    const size_t a_row_offset = i * K;
+                    const size_t c_row_offset = i * N;
+
+                    for (size_t k = k0; k < k_max; ++k) {
+                        const float a_val = a_data[a_row_offset + k];
+                        const size_t b_row_offset = k * N;
+
+                        // Innermost loop: Contiguous row-major read of B and write to C
+                        for (size_t j = j0; j < j_max; ++j) {
+                            c_data[c_row_offset + j] += a_val * b_data[b_row_offset + j];
+                        }
+                    }
+                }
+                // -------------------------------------------------------------
+
+            }
+        }
+    }
+
+    return result;
+}
+
+
 
 
 
