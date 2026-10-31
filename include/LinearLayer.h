@@ -30,10 +30,12 @@ public:
 
     [[nodiscard]] Tensor2D forward(const Tensor2D& input) override;
     [[nodiscard]] Tensor2D backward(const Tensor2D& d_out) override;
-    void update_parameters(float learning_rate) override;
+    [[nodiscard]] bool has_parameters() const override { return true; }
 
-    [[nodiscard]] const Tensor2D& weights() const { return weights_; }
-    [[nodiscard]] const Tensor2D& biases() const { return biases_; }
+    Tensor2D& get_weights() override { return weights_; }
+    Tensor2D& get_biases() override { return biases_; }
+    [[nodiscard]] const Tensor2D& get_d_weights() const override { return d_weights_; }
+    [[nodiscard]] const Tensor2D& get_d_biases() const override { return d_biases_; }
 };
 
 #endif // ML_SYSTEMS_ENGINE_LINEARLAYER_H

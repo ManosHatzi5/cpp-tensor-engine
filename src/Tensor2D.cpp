@@ -192,3 +192,4 @@ Tensor2D Tensor2D::sigmoid_derivative_from_output() const {
 
 
 
+

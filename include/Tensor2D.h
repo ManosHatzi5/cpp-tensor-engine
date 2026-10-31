@@ -47,21 +47,64 @@ public:
     // Evaluates a * (1.0f - a) element-wise to avoid recomputing exp(-z).
     [[nodiscard]] Tensor2D sigmoid_derivative_from_output() const;
 
-    // Kernel: Adds a column vector (rows x 1) across all columns of this matrix (rows x cols)
-    // to make batches possible and not going one by one we need to broadcast our bias vector
-    // from d_outx1 to d_outxB where B the batch number. But in order to save memory we dont
-    // just copy paste the vector B times, we keep the d_outx1 and "virtually" go through
-    // the d_outxB Tensor. See implementation
+    /**
+     * @brief Broadcasts a column vector across all columns of this matrix (In-place/Out-of-place).
+     * @note Memory Optimization: Virtually projects a (D_out x 1) bias vector across a
+     *       (D_out x Batch) tensor without allocating memory for a duplicated matrix.
+     * @param bias A (rows x 1) column vector to broadcast.
+     * @return A new Tensor2D resulting from the broadcasted addition.
+     */
     [[nodiscard]] Tensor2D add_bias(const Tensor2D& bias) const;
 
-    // Kernel: Sums across columns (axis 1), reducing a (rows x cols) matrix to a (rows x 1) column vector
-    // as a result of the above kernel, bias remains a d_outx1 tensor so we need the dB to also have the same
-    // dimensions so it can pass safely to each layer as input during backpropagation
-    // so keeping the same logic that dB = dZ, now we have dB = [dZ1, dZ2..., dZB], we just take the sum
-    // of those number resulting into one scalar number, dB = dZk, dZk = sum(dZ1, dZ2..., dZB)
+    /**
+     * @brief Reduces the matrix along the column dimension (axis 1) via summation.
+     * @note Backpropagation Kernel: Collapses a (D_out x Batch) gradient tensor into a
+     *       (D_out x 1) gradient vector to match the dimensions of the bias parameters.
+     * @return A (rows x 1) column vector containing the row-wise sums.
+     */
     [[nodiscard]] Tensor2D sum_along_columns() const;
 
     // In-place uniform random initialization in [min_val, max_val]
     void randomize(float min_val = -1.0f, float max_val = 1.0f);
 
+    /**
+     * @brief Direct pointer to the underlying contiguous row-major buffer.
+     * @note Bypasses container indirection for SIMD vectorization and cache-line streaming.
+     *       Callers must bound access using size() to avoid out-of-bounds heap faults.
+     * @return Raw pointer to the first element (float*).
+     */
+    [[nodiscard]] float* data() noexcept { return data_.data(); }
+    [[nodiscard]] const float* data() const noexcept { return data_.data(); }
+
+    /**
+     * @brief Total number of elements in the tensor (rows * cols).
+     */
+    [[nodiscard]] size_t size() const noexcept { return data_.size(); }
 };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

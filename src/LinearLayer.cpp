@@ -69,12 +69,6 @@ Tensor2D LinearLayer::backward(const Tensor2D& d_out) {
     return weights_.transpose().matmul(d_out);
 }
 
-void LinearLayer::update_parameters(float learning_rate) {
-    // implementing SGD
-    weights_ = weights_ + (d_weights_ * (-learning_rate));
-    biases_  = biases_  + (d_biases_  * (-learning_rate));
-}
-
 
 
 

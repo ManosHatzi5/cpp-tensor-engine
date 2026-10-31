@@ -1,5 +1,7 @@
 #include <gtest/gtest.h>
 
+#include "Adam.h"
+#include "SGDOptimizer.h"
 #include "LinearLayer.h"
 #include "Tensor2D.h"
 
@@ -36,7 +38,7 @@ TEST(Tensor2D_Core, OutOfBoundsThrowsException) {
     Tensor2D tensor(3, 3);
 
     // Expect that calling tensor(3, 0) throws an out_of_range exception.
-    // (Remember, indices are 0-based, so row 3 is the 4th row, which does not exist).
+    // (indices are 0-based, so row 3 is the 4th row, which does not exist).
     EXPECT_THROW(tensor(3, 0), std::out_of_range);
     EXPECT_THROW(tensor(0, 5), std::out_of_range);
 }
@@ -231,7 +233,7 @@ TEST(DenseLayer_Execution, ForwardPassRandomWeights) {
 
     // Because weights are randomized in [-0.5, 0.5], output is non-zero
     // (either positive due to ReLU or clamped to 0)
-    const Tensor2D& w = layer.weights();
+    const Tensor2D& w = layer.get_weights();
     bool all_zero = true;
     for (size_t r = 0; r < w.rows(); ++r) {
         for (size_t c = 0; c < w.cols(); ++c) {
@@ -303,12 +305,14 @@ TEST(DenseLayer_Execution, BackwardPassAnalytical) {
     Tensor2D d_in = layer.backward(d_out);
     EXPECT_EQ(d_in.rows(), 2);
     EXPECT_EQ(d_in.cols(), 1);
-    EXPECT_EQ(layer.weights().rows(), 1);
-    EXPECT_EQ(layer.weights().cols(), 2);
+    EXPECT_EQ(layer.get_weights().rows(), 1);
+    EXPECT_EQ(layer.get_weights().cols(), 2);
 }
 
+#include "Sequential.h"
 TEST(Engine_Integration, TrainingLoopSingleLayer) {
-    LinearLayer layer(2, 1); // 2 inputs, 1 output
+    Sequential model;
+    model.add(std::make_unique<LinearLayer>(2, 1)); // 2 inputs, 1 output
 
     // Inputs chosen with negative signs to invert the deterministic
     // negative random weights and force a positive Z (opening the ReLU gate)
@@ -326,30 +330,25 @@ TEST(Engine_Integration, TrainingLoopSingleLayer) {
     float final_loss = 0.0f;
 
     // Train for 100 epochs
-    for (int epoch = 0; epoch < 100; ++epoch) {
-        // 1. Forward Pass
-        Tensor2D y_pred = layer.forward(x);
+    SGD optimizer(learning_rate);
 
-        // 2. Compute Loss
+    for (int epoch = 0; epoch < 100; ++epoch) {
+        Tensor2D y_pred = model.forward(x);
+
         float current_loss = Loss::mse(y_pred, target);
         if (epoch == 0) initial_loss = current_loss;
         if (epoch == 99) final_loss = current_loss;
 
-        // 3. Compute Loss Derivative
         Tensor2D grad = Loss::mse_derivative(y_pred, target);
 
-        // 4. Backward Pass (calculates dW and dB)
-        (void)layer.backward(grad);
+        (void)model.backward(grad);
 
-        // 5. Optimizer Step
-        layer.update_parameters(learning_rate);
+        optimizer.step(model.get_layers());
     }
 
-    // The loss should have decreased significantly over 100 epochs
     EXPECT_LT(final_loss, initial_loss);
 
-    // The final prediction should be reasonably close to 5.0
-    Tensor2D final_pred = layer.forward(x);
+    Tensor2D final_pred = model.forward(x);
     std::cout << "Initial Loss: " << initial_loss << "\n";
     std::cout << "Final Loss: " << final_loss << "\n";
     std::cout << "Final Prediction: " << final_pred(0, 0) << " (Target: 5.0)\n";
@@ -380,6 +379,7 @@ TEST(Sequential_Execution, MultiLayerTrainingConvergence) {
     float final_loss = 0.0f;
 
     // Train for 200 epochs through the unified pipeline
+    SGD optimizer(learning_rate);
     for (int epoch = 0; epoch < 200; ++epoch) {
         Tensor2D y_pred = model.forward(x);
 
@@ -390,7 +390,7 @@ TEST(Sequential_Execution, MultiLayerTrainingConvergence) {
         Tensor2D grad = Loss::mse_derivative(y_pred, target);
 
         (void)model.backward(grad);
-        model.update_parameters(learning_rate);
+        optimizer.step(model.get_layers());
     }
 
     EXPECT_LT(final_loss, initial_loss);
@@ -465,6 +465,7 @@ TEST(Engine_Integration, BatchTrainingMultiSample) {
     float initial_loss = 0.0f;
     float final_loss = 0.0f;
 
+    SGD optimizer(learning_rate);
     for (int epoch = 0; epoch < 300; ++epoch) {
         // Forward: (2 x 3) -> (4 x 3) -> (4 x 3) -> (1 x 3)
         Tensor2D y_pred = model.forward(x);
@@ -479,8 +480,7 @@ TEST(Engine_Integration, BatchTrainingMultiSample) {
         // Backward: accumulates dW and sums dB across all 3 batch columns
         (void)model.backward(grad);
 
-        // Optimizer step
-        model.update_parameters(learning_rate);
+        optimizer.step(model.get_layers());
     }
 
     EXPECT_LT(final_loss, initial_loss);
@@ -555,7 +555,7 @@ TEST(Parameter_Initialization, HeAndXavierVariance) {
 
     // 1. Verify He Initialization
     LinearLayer he_layer(in_features, out_features, InitScheme::He);
-    const auto& w_he = he_layer.weights();
+    const auto& w_he = he_layer.get_weights();
 
     float sum_he = 0.0f;
     for (size_t r = 0; r < out_features; ++r) {
@@ -580,7 +580,7 @@ TEST(Parameter_Initialization, HeAndXavierVariance) {
 
     // 2. Verify Xavier Initialization
     LinearLayer xavier_layer(in_features, out_features, InitScheme::Xavier);
-    const auto& w_xav = xavier_layer.weights();
+    const auto& w_xav = xavier_layer.get_weights();
 
     float sum_xav = 0.0f;
     for (size_t r = 0; r < out_features; ++r) {
@@ -612,7 +612,7 @@ TEST(Parameter_Initialization, HeAndXavierVariance) {
 #include <iostream>
 
 TEST(Engine_Integration, XORClassificationBenchmark) {
-    // 1. Construct the Non-Linear Architecture
+    // 1. Constructing the Non-Linear Architecture
     Sequential model;
 
     // Hidden Layer: 2 inputs -> 4 neurons, He initialization for ReLU
@@ -623,7 +623,7 @@ TEST(Engine_Integration, XORClassificationBenchmark) {
     model.add(std::make_unique<LinearLayer>(4, 1, InitScheme::Xavier));
     model.add(std::make_unique<SigmoidLayer>());
 
-    // 2. Prepare the XOR Dataset (Full Batch of 4 samples)
+    // 2. Preparing the XOR Dataset (Full Batch of 4 samples)
     // Shape: (D_in x B) = (2 x 4)
     Tensor2D X(2, 4);
     X(0, 0) = 0.0f; X(1, 0) = 0.0f; // Sample 0: [0, 0]^T
@@ -639,26 +639,20 @@ TEST(Engine_Integration, XORClassificationBenchmark) {
     Y(0, 3) = 0.0f; // 1 XOR 1 = 0
 
     // 3. Training Loop Configuration
-    float learning_rate = 0.5f; // High LR for standard SGD on tiny deterministic batches
     float initial_loss = 0.0f;
     float final_loss = 0.0f;
     const int epochs = 3000;
 
+    Adam optimizer(0.1f);
+
     for (int epoch = 0; epoch < epochs; ++epoch) {
-        // Forward Pass
         Tensor2D pred = model.forward(X);
-
-        // Loss Calculation
-        float loss = Loss::bce(pred, Y);
-        if (epoch == 0) initial_loss = loss;
-        if (epoch == epochs - 1) final_loss = loss;
-
-        // Backward Pass
+        // float loss = Loss::bce(pred, Y);
         Tensor2D grad = Loss::bce_derivative(pred, Y);
         (void)model.backward(grad);
 
-        // Optimizer Step
-        model.update_parameters(learning_rate);
+        // External optimization step
+        optimizer.step(model.get_layers());
     }
 
     // 4. Console Verification

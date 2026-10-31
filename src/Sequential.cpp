@@ -25,9 +25,3 @@ Tensor2D Sequential::backward(const Tensor2D& d_out) {
     //     current_grad = (*it)->backward(current_grad);}
     return current_grad;
 }
-
-void Sequential::update_parameters(float learning_rate) {
-    for (const auto& layer : layers_) {
-        layer->update_parameters(learning_rate);
-    }
-}

@@ -21,10 +21,10 @@ public:
     // Iterates in reverse: d_out -> Layer N-1 -> Layer N-2 -> ... -> d_in
     [[nodiscard]] Tensor2D backward(const Tensor2D& d_out);
 
-    // Invokes parameter update across all constituent layers
-    void update_parameters(float learning_rate);
-
     [[nodiscard]] size_t size() const { return layers_.size(); }
+
+    // Exposes layer references so external optimizers can apply parameter updates
+    std::vector<std::unique_ptr<Layer>>& get_layers() noexcept { return layers_; }
 };
 
 #endif // ML_SYSTEMS_ENGINE_SEQUENTIAL_H
