@@ -736,7 +736,7 @@ TEST(Tensor2D_HPC, MatmulBenchmark_512x512) {
     Tensor2D A(N, N);
     Tensor2D B(N, N);
 
-    // Initialize with non-zero values to avoid compiler short-circuiting
+    // Initialization with non-zero values to avoid compiler short-circuiting
     for (size_t r = 0; r < N; ++r) {
         for (size_t c = 0; c < N; ++c) {
             A(r, c) = 0.5f;
@@ -792,6 +792,217 @@ TEST(Tensor2D_HPC, MatmulBenchmark_512x512) {
     EXPECT_LT(tiled_ms.count(), naive_ms.count());
 }
 
+// Verifying Unrolled Tiled Transposed-B Matches Baseline Matmul
+TEST(Tensor2D_HPC, MatmulTransposedBTiledEquivalence) {
+    const size_t M = 65;
+    const size_t K = 70;
+    const size_t N = 55;
+
+    Tensor2D A(M, K);
+    Tensor2D B(K, N);
+
+    for (size_t r = 0; r < M; ++r) {
+        for (size_t c = 0; c < K; ++c) {
+            A(r, c) = static_cast<float>((r * 13 + c * 7) % 100) / 10.0f - 5.0f;
+        }
+    }
+    for (size_t r = 0; r < K; ++r) {
+        for (size_t c = 0; c < N; ++c) {
+            B(r, c) = static_cast<float>((r * 11 + c * 17) % 100) / 10.0f - 5.0f;
+        }
+    }
+
+    Tensor2D expected = A.matmul(B);
+    Tensor2D B_T = B.transpose();
+    Tensor2D actual = A.matmul_transposed_b_tiled(B_T, 32);
+
+    ASSERT_EQ(actual.rows(), expected.rows());
+    ASSERT_EQ(actual.cols(), expected.cols());
+
+    const float* exp_ptr = expected.data();
+    const float* act_ptr = actual.data();
+    for (size_t i = 0; i < actual.size(); ++i) {
+        EXPECT_NEAR(act_ptr[i], exp_ptr[i], 1e-4f) << "Mismatch at flat index " << i;
+    }
+}
+
+// 3-Way Architectural GEMM Benchmark (Baseline vs. Tiled i-k-j vs. Tiled Transposed-B ILP)
+TEST(Tensor2D_HPC, Matmul3WayHPCBenchmark_512x512) {
+    const size_t N = 512;
+    const double total_flops = 2.0 * static_cast<double>(N) * static_cast<double>(N) * static_cast<double>(N);
+
+    Tensor2D A(N, N);
+    Tensor2D B(N, N);
+
+    for (size_t r = 0; r < N; ++r) {
+        for (size_t c = 0; c < N; ++c) {
+            A(r, c) = 0.5f;
+            B(r, c) = 0.5f;
+        }
+    }
+
+    Tensor2D B_T = B.transpose();
+
+    std::cout << "\n======================================================================\n";
+    std::cout << "  3-WAY ARCHITECTURAL GEMM BENCHMARK (512x512, Single-Thread, Release)\n";
+    std::cout << "  Total Operations: " << total_flops / 1e9 << " GFLOP\n";
+    std::cout << "======================================================================\n";
+
+    // 1. Naive (i-j-k)
+    auto s1 = std::chrono::high_resolution_clock::now();
+    Tensor2D c1 = A.matmul(B);
+    auto e1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> ms1 = e1 - s1;
+    double gflops1 = (total_flops / (ms1.count() / 1000.0)) / 1e9;
+    std::cout << std::left << std::setw(36) << "1. Naive (i-j-k baseline):"
+              << std::fixed << std::setprecision(2) << ms1.count() << " ms | " << gflops1 << " GFLOPS\n";
+
+    // 2. Tiled i-k-j (32x32)
+    auto s2 = std::chrono::high_resolution_clock::now();
+    Tensor2D c2 = A.matmul_tiled(B, 32);
+    auto e2 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> ms2 = e2 - s2;
+    double gflops2 = (total_flops / (ms2.count() / 1000.0)) / 1e9;
+    std::cout << std::left << std::setw(36) << "2. Tiled (i-k-j, 32x32):"
+              << std::fixed << std::setprecision(2) << ms2.count() << " ms | " << gflops2 << " GFLOPS\n";
+
+    // 3. Tiled Transposed-B (32x32, 4-Way ILP Unrolled)
+    auto s3 = std::chrono::high_resolution_clock::now();
+    Tensor2D c3 = A.matmul_transposed_b_tiled(B_T, 32);
+    auto e3 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> ms3 = e3 - s3;
+    double gflops3 = (total_flops / (ms3.count() / 1000.0)) / 1e9;
+    std::cout << std::left << std::setw(36) << "3. Tiled Transposed-B (ILP Unrolled):"
+              << std::fixed << std::setprecision(2) << ms3.count() << " ms | " << gflops3 << " GFLOPS\n";
+
+    std::cout << "----------------------------------------------------------------------\n";
+    std::cout << "Speedup (Tiled i-k-j vs Naive):                " << (ms1.count() / ms2.count()) << "x\n";
+    std::cout << "Speedup (Tiled Transposed-B vs Naive):         " << (ms1.count() / ms3.count()) << "x\n";
+    std::cout << "======================================================================\n\n";
+
+    EXPECT_FLOAT_EQ(c1(0, 0), c2(0, 0));
+    EXPECT_FLOAT_EQ(c1(0, 0), c3(0, 0));
+}
+
+#include <chrono>
+#include <iomanip>
+#include <memory>
+#include "Sequential.h"
+#include "LinearLayer.h"
+#include "ReLULayer.h"
+#include "Adam.h"
+#include "Loss.h"
+
+TEST(Engine_HPC, EndToEndNetworkTrainingBenchmark) {
+    const size_t batch_size = 1024;
+    const size_t d_in = 64;
+    const size_t d_hidden = 128;
+    const size_t d_out = 16;
+    const int epochs = 10;
+    const float lr = 0.001f;
+
+    // Feature matrix X: (64 x 1024)
+    Tensor2D X(d_in, batch_size);
+    for (size_t r = 0; r < d_in; ++r) {
+        for (size_t c = 0; c < batch_size; ++c) {
+            X(r, c) = static_cast<float>((r * 17 + c * 31) % 100) / 100.0f - 0.5f;
+        }
+    }
+
+    // Target matrix Y: (16 x 1024)
+    Tensor2D Y(d_out, batch_size);
+    for (size_t r = 0; r < d_out; ++r) {
+        for (size_t c = 0; c < batch_size; ++c) {
+            Y(r, c) = static_cast<float>((r * 13 + c * 29) % 100) / 100.0f;
+        }
+    }
+
+    std::cout << "\n======================================================================\n";
+    std::cout << "  END-TO-END TRAINING BENCHMARK (Batch: 1024, 64 -> 128 -> 16)\n";
+    std::cout << "  Epochs: " << epochs << " | Single-Thread Release Target\n";
+    std::cout << "======================================================================\n";
+
+    // -------------------------------------------------------------------------
+    // 1. Pipeline A: Pure Naive Baseline (Direct untiled matmul calls)
+    // -------------------------------------------------------------------------
+    Tensor2D W1(d_hidden, d_in);     W1.randomize(-0.1f, 0.1f);
+    Tensor2D b1(d_hidden, 1);
+    Tensor2D W2(d_out, d_hidden);    W2.randomize(-0.1f, 0.1f);
+    Tensor2D b2(d_out, 1);
+
+    auto start_naive = std::chrono::high_resolution_clock::now();
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Forward (Naive)
+        Tensor2D Z1 = W1.matmul(X).add_bias(b1);
+        Tensor2D A1 = Z1.relu();
+        Tensor2D Z2 = W2.matmul(A1).add_bias(b2);
+
+        // Loss derivative
+        Tensor2D dZ2 = Loss::mse_derivative(Z2, Y);
+
+        // Backward (Naive)
+        Tensor2D dW2 = dZ2.matmul(A1.transpose());
+        Tensor2D db2 = dZ2.sum_along_columns();
+        Tensor2D dA1 = W2.transpose().matmul(dZ2);
+
+        Tensor2D dZ1 = dA1.multiply(Z1.relu_derivative());
+        Tensor2D dW1 = dZ1.matmul(X.transpose());
+        Tensor2D db1 = dZ1.sum_along_columns();
+
+        // Parameter update
+        W1 = W1 + (dW1 * -lr);
+        b1 = b1 + (db1 * -lr);
+        W2 = W2 + (dW2 * -lr);
+        b2 = b2 + (db2 * -lr);
+    }
+    auto end_naive = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> naive_ms = end_naive - start_naive;
+
+    std::cout << std::left << std::setw(32) << "1. Naive Pipeline Duration:"
+              << std::fixed << std::setprecision(2)
+              << naive_ms.count() << " ms ("
+              << naive_ms.count() / epochs << " ms/epoch)\n";
+
+    // -------------------------------------------------------------------------
+    // 2. Pipeline B: Production Architecture (Uses matmul_tiled internally)
+    // -------------------------------------------------------------------------
+    Sequential model;
+    model.add(std::make_unique<LinearLayer>(d_in, d_hidden));
+    model.add(std::make_unique<ReLULayer>());
+    model.add(std::make_unique<LinearLayer>(d_hidden, d_out));
+
+    Adam optimizer(lr);
+
+    auto start_tiled = std::chrono::high_resolution_clock::now();
+    for (int epoch = 0; epoch < epochs; ++epoch) {
+        // Forward (Tiled via LinearLayer)
+        Tensor2D pred = model.forward(X);
+
+        // Loss derivative
+        Tensor2D grad = Loss::mse_derivative(pred, Y);
+
+        // Backward (Tiled via LinearLayer)
+        (void)model.backward(grad);
+
+        // Parameter update
+        optimizer.step(model.get_layers());
+    }
+    auto end_tiled = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double, std::milli> tiled_ms = end_tiled - start_tiled;
+
+    std::cout << std::left << std::setw(32) << "2. Tiled OOP Pipeline:"
+              << std::fixed << std::setprecision(2)
+              << tiled_ms.count() << " ms ("
+              << tiled_ms.count() / epochs << " ms/epoch)\n";
+
+    double speedup = naive_ms.count() / tiled_ms.count();
+    std::cout << "----------------------------------------------------------------------\n";
+    std::cout << "Overall Training Speedup: " << std::fixed << std::setprecision(2)
+              << speedup << "x faster\n";
+    std::cout << "======================================================================\n\n";
+
+    EXPECT_LT(tiled_ms.count(), naive_ms.count());
+}
 
 
 

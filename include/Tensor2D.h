@@ -90,6 +90,16 @@ public:
      * @return Result matrix C = A * B of shape (M x N).
      */
     [[nodiscard]] Tensor2D matmul_tiled(const Tensor2D& other, size_t block_size = 32) const;
+
+    /**
+     * @brief Tiled matrix multiplication against a pre-transposed matrix B_T: C = A * (B_T)^T.
+     * @details Combines L1 cache blocking (temporal locality) with dual unit-stride
+     *          row traversals (spatial locality).
+     * @param b_t Pre-transposed matrix B of shape (N x K).
+     * @param block_size Edge length of the cache tile (default: 32).
+     * @return Result matrix C of shape (M x N).
+     */
+    [[nodiscard]] Tensor2D matmul_transposed_b_tiled(const Tensor2D& b_t, size_t block_size = 32) const;
 };
 
 

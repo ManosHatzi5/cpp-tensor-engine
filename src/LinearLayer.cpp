@@ -48,25 +48,36 @@ void LinearLayer::initialize_parameters(InitScheme scheme) {
 }
 
 Tensor2D LinearLayer::forward(const Tensor2D& input) {
+    if (input.rows() != in_features_) {
+        throw std::invalid_argument("Input row count must match layer input features.");
+    }
     //(No activation applied here)
-    last_input_ = input;
-    // Z = (W * X) + B with virtual broadcasting across batch columns
-    return weights_.matmul(input).add_bias(biases_);
+    last_input_ = input; // Cache input X for backward pass dW calculation
+
+    // Z = W * X + b using cache-tiled GEMM kernel
+    Tensor2D z = weights_.matmul_tiled(input, 32);
+    // add the bias with virtual broadcasting across batch columns
+    return z.add_bias(biases_);
 }
 
-Tensor2D LinearLayer::backward(const Tensor2D& d_out) {
-    // d_out is dZ (or delta).
-    // 1. dW = dZ * X^T
-    // Shape check: (D_out x B) * (B x D_in) -> (D_out x D_in)
-    d_weights_ = d_out.matmul(last_input_.transpose());
+Tensor2D LinearLayer::backward(const Tensor2D& grad_output) {
+    if (grad_output.rows() != out_features_) {
+        throw std::invalid_argument("grad_output row count must match layer output features.");
+    }
 
-    // 2. dB = sum along columns of dZ
+    // 1. dW = grad_output (dZ) * X^T
+    // Shape check: (D_out x B) * (B x D_in) -> (D_out x D_in)
+    d_weights_ = grad_output.matmul_tiled(last_input_.transpose(), 32);
+
+    // 2. dB = sum along columns across batch dimension
     // Shape check: (D_out x B) -> (D_out x 1)
-    d_biases_ = d_out.sum_along_columns();
+    d_biases_ = grad_output.sum_along_columns();
 
     // 3. dX = W^T * dZ (passed to preceding layer)
     // Shape check: (D_in x D_out) * (D_out x B) -> (D_in x B)
-    return weights_.transpose().matmul(d_out);
+    Tensor2D d_input = weights_.transpose().matmul_tiled(grad_output, 32);
+
+    return d_input;
 }
 
 

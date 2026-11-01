@@ -234,6 +234,65 @@ Tensor2D Tensor2D::matmul_tiled(const Tensor2D& other, size_t block_size) const 
     return result;
 }
 
+Tensor2D Tensor2D::matmul_transposed_b_tiled(const Tensor2D& b_t, size_t block_size) const {
+    if (cols_ != b_t.cols_) {
+        throw std::invalid_argument("Inner dimension mismatch.");
+    }
+
+    const size_t M = rows_;
+    const size_t K = cols_;
+    const size_t N = b_t.rows_;
+
+    Tensor2D result(M, N);
+
+    const float* a_data = this->data();
+    const float* bt_data = b_t.data();
+    float* c_data = result.data();
+
+    for (size_t i0 = 0; i0 < M; i0 += block_size) {
+        const size_t i_max = std::min(i0 + block_size, M);
+
+        for (size_t j0 = 0; j0 < N; j0 += block_size) {
+            const size_t j_max = std::min(j0 + block_size, N);
+
+            for (size_t k0 = 0; k0 < K; k0 += block_size) {
+                const size_t k_max = std::min(k0 + block_size, K);
+
+                for (size_t i = i0; i < i_max; ++i) {
+                    const size_t a_row_offset = i * K;
+                    const size_t c_row_offset = i * N;
+
+                    for (size_t j = j0; j < j_max; ++j) {
+                        const size_t bt_row_offset = j * K;
+
+                        // 1. Four independent accumulators to break FMA pipeline stalls
+                        float sum0 = 0.0f, sum1 = 0.0f, sum2 = 0.0f, sum3 = 0.0f;
+
+                        size_t k = k0;
+                        // 2. Unrolled loop: advance by 4
+                        for (; k + 3 < k_max; k += 4) {
+                            sum0 += a_data[a_row_offset + k]     * bt_data[bt_row_offset + k];
+                            sum1 += a_data[a_row_offset + k + 1] * bt_data[bt_row_offset + k + 1];
+                            sum2 += a_data[a_row_offset + k + 2] * bt_data[bt_row_offset + k + 2];
+                            sum3 += a_data[a_row_offset + k + 3] * bt_data[bt_row_offset + k + 3];
+                        }
+
+                        // 3. Tail cleanup (if block_size is not a multiple of 4)
+                        float tail_sum = 0.0f;
+                        for (; k < k_max; ++k) {
+                            tail_sum += a_data[a_row_offset + k] * bt_data[bt_row_offset + k];
+                        }
+
+                        // 4. Final reduction and write-back
+                        c_data[c_row_offset + j] += (sum0 + sum1 + sum2 + sum3 + tail_sum);
+                    }
+                }
+            }
+        }
+    }
+
+    return result;
+}
 
 
 
