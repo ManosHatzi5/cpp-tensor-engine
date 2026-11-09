@@ -54,3 +54,15 @@ for (int epoch = 0; epoch < 10; ++epoch) {
     model.backward(grad);
     optimizer.step(model.get_layers());
 }
+```
+## 🛠️ Build Instructions
+This project uses CMake. Note: To reproduce the HPC benchmarking results, you must compile the project in Release mode to enable the compiler's auto-vectorization and loop optimization passes.
+
+## 🗺️ Roadmap
+[x] Core Neural Network API (Forward/Backward Autograd simulation).
+
+[x] L1/L2 Cache-Tiled Matrix Multiplication.
+
+[ ] Phase 2 (Upcoming): Sequence Models (RNNs, LSTMs, Transformers) theoretical foundations.
+
+[ ] Phase 3 (Upcoming): True Parallel Computing integration via OpenMP (Multi-core CPU) and CUDA C++ (GPU acceleration).
